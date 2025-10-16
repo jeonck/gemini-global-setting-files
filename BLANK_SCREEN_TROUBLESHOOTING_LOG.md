@@ -1,4 +1,3 @@
-
 # 빈 화면(백지) 문제 해결 과정 (Troubleshooting Blank Screen Issue)
 
 이 문서는 애플리케이션 개발 중 발생했던 빈 화면 렌더링 문제와 그 해결 과정을 기록합니다.
@@ -101,3 +100,46 @@
   ```
 
 이 수정을 통해 `react-feather` 아이콘이 올바른 렌더링 흐름에 따라 생성되도록 하여 빈 화면 문제를 최종적으로 해결했습니다.
+
+## 5. GitHub Actions 워크플로우 및 TypeScript 오류 해결
+
+GitHub Actions 빌드 실패 및 TypeScript 오류 해결 과정은 다음과 같습니다.
+
+### 5.1. 초기 워크플로우 빌드 실패
+
+- **문제**: `ci.yml` 워크플로우가 초기 빌드에서 실패했습니다.
+- **원인 분석**: `react-hub` 예제와 비교하여 `npm install` 대신 `npm ci` 사용, Node.js 버전 불일치, `lint` 스텝의 엄격한 설정(`--max-warnings 0`) 등이 원인으로 추정되었습니다.
+- **해결**: `npm run lint` 스텝을 제거하고, Node.js 버전을 18로 통일하며, `npm ci` 사용 및 캐시 설정을 추가했습니다.
+
+### 5.2. TypeScript 컴파일 오류
+
+- **문제**: `npm run build` 실행 시 다수의 TypeScript 컴파일 오류가 발생했습니다.
+- **오류 유형 및 해결 방법**:
+    1.  **`TS7016: Could not find a declaration file for module 'prismjs'.`**
+        -   **해결**: `npm install --save-dev @types/prismjs`를 통해 `prismjs` 타입 정의를 설치했습니다.
+    2.  **`TS6133: 'React' is declared but its value is never read.`**
+        -   **해결**: `tsconfig.json` 파일의 `compilerOptions`에 `"noUnusedLocals": false`를 추가하여 사용되지 않는 지역 변수에 대한 검사를 비활성화했습니다. (JSX 변환 시 `React`가 명시적으로 사용되지 않아 발생하는 오류).
+    3.  **`TS2339: Property 'env' does not exist on type 'ImportMeta'.`**
+        -   **해결**: `src/vite-env.d.ts` 파일을 생성하고 `ImportMetaEnv` 인터페이스를 선언하여 `import.meta.env`에 대한 타입 정의를 추가했습니다.
+    4.  **`TS2353: Object literal may only specify known properties, and 'highlight' does not exist in type 'MarkedExtension'.`**
+        -   **해결**: `marked` 라이브러리의 `highlight` 옵션 사용 방식이 변경됨에 따라 `npm install marked-highlight`를 설치하고 `MarkdownRenderer.tsx`에서 `marked.use(markedHighlight(...))` 방식으로 통합하여 구문 강조를 처리했습니다.
+    5.  **`TS7006: Parameter '...' implicitly has an 'any' type.` / `TS7031: Binding element '...' implicitly has an 'any' type.` / `TS18046: 'items' is of type 'unknown'.`**
+        -   **해결**: `Navbar.tsx` 및 `Home.tsx` 파일 내의 모든 함수형 컴포넌트(예: `NavLink`, `Dropdown`, `ServerCard` 등)의 props에 대해 명시적인 TypeScript 인터페이스를 정의하고 적용하여 `noImplicitAny` 관련 오류를 해결했습니다.
+
+## 6. GitHub Pages 배포 시 빈 화면 문제 해결
+
+- **문제**: GitHub Actions를 통해 GitHub Pages에 배포된 후 사이트가 빈 화면으로 표시되었습니다.
+- **원인**: SPA(Single Page Application)가 로컬 개발 환경(루트 경로 `/`)을 기준으로 빌드되었으나, GitHub Pages에서는 `/mcp-hub/`와 같은 하위 경로에서 제공되면서 정적 자원(JS, CSS)을 올바르게 찾지 못해 발생했습니다.
+- **해결**: 
+    1.  `vite.config.ts` 파일의 `base` 옵션을 GitHub Pages의 하위 경로인 `'/mcp-hub/'`로 변경했습니다.
+    2.  `src/App.tsx` 파일의 `BrowserRouter` 컴포넌트에 `basename="/mcp-hub"` 속성을 추가하여 React Router가 올바른 기본 경로를 인식하도록 했습니다.
+
+## 7. 환경 변수를 이용한 로컬/배포 환경 설정 분리
+
+- **문제**: 이전 해결책(6번)은 `base` 경로를 하드코딩하여 로컬 개발 환경과 배포 환경 간의 유연성이 부족했습니다.
+- **원인**: 로컬 개발 시에는 루트 경로(`/`)를 사용하고, GitHub Pages 배포 시에는 하위 경로(`/mcp-hub/`)를 사용해야 하는 필요성 때문입니다.
+- **해결**: 
+    1.  `vite.config.ts` 파일의 `base` 옵션을 `process.env.VITE_APP_BASE_PATH || '/'`로 변경했습니다.
+    2.  `src/App.tsx` 파일의 `BrowserRouter` 컴포넌트 `basename` 속성을 `import.meta.env.VITE_APP_BASE_PATH || "/"`로 변경했습니다.
+    3.  `.github/workflows/deploy.yml` 배포 워크플로우의 `Build` 스텝에 `VITE_APP_BASE_PATH: /mcp-hub/` 환경 변수를 추가하여 GitHub Pages 배포 시 올바른 경로가 사용되도록 했습니다.
+    4.  로컬 개발 시에는 `VITE_APP_BASE_PATH` 환경 변수를 설정하지 않거나 `/`로 설정하여 루트 경로를 사용하도록 했습니다.
